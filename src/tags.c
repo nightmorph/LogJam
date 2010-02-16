@@ -78,8 +78,23 @@ create_tag_string (GtkTreeModel *model,
   return FALSE;
 }
 
+static void
+tags_set_fg(GtkTreeViewColumn *column, GtkCellRenderer *cell,
+	    GtkTreeModel *model, GtkTreeIter *iter, gpointer data)
+{
+  GSList *prev = (GSList *) data;
+  gchar *text;
+
+  gtk_tree_model_get(model, iter, 1, &text, -1);
+  if (prev && g_slist_find_custom(prev, text, g_utf8_collate))
+    g_object_set(G_OBJECT(cell), "foreground", "Red", NULL);
+  else
+    g_object_set(G_OBJECT(cell), "foreground", "Black", NULL);
+  g_free(text);
+}
+
 GtkWidget* 
-taglist_create (GSList *l)
+taglist_create (GSList *l, GSList **head)
 {
   GtkWidget *treeview;
   GtkListStore *store;
@@ -87,19 +102,36 @@ taglist_create (GSList *l)
   GtkCellRenderer *renderer;
   GtkTreeViewColumn *column;
   guint i;
+  GSList *prev = *head, *p;
 
   /* create model */
   store = gtk_list_store_new (2, G_TYPE_BOOLEAN, G_TYPE_STRING);
   for (i = 0; i < g_slist_length (l); i++)
     {
       LJTag *t = (LJTag *) g_slist_nth_data (l, i);
+      gboolean check = FALSE;
 
+      if (prev && (p = g_slist_find_custom(prev, t->tag, g_utf8_collate)) != NULL) {
+        check = TRUE;
+        prev = g_slist_remove_link(prev, p);
+        g_free(p->data);
+        g_slist_free1(p);
+      }
       gtk_list_store_append (store, &iter);
       gtk_list_store_set (store, &iter,
-			  0, FALSE,
+			  0, check,
 			  1, t->tag,
 			  -1);
     }
+
+  /* rest of the typed tags */
+  for (p = prev; p; p = g_slist_next(p)) {
+    gtk_list_store_append(store, &iter);
+    gtk_list_store_set(store, &iter,
+      		  0, TRUE,
+      		  1, p->data,
+      		  -1);
+  }
 
   /* create treeview */
   treeview = gtk_tree_view_new_with_model (GTK_TREE_MODEL (store));
@@ -120,20 +152,44 @@ taglist_create (GSList *l)
   column = gtk_tree_view_column_new_with_attributes (_("Tag name"), 
 						     renderer, "text", 1,
 						     NULL);
+
+  gtk_tree_view_column_set_cell_data_func(column, renderer, tags_set_fg,
+					  prev, NULL);
+
   gtk_tree_view_column_set_sort_column_id (column, 1);
   gtk_tree_view_append_column (treeview, column);
  
+  /* update head of the prev list */
+  *head = prev;
   g_object_unref (store);
 
   return treeview;
 }
 
+static GSList *
+tags_split(gchar *typed) {
+  GSList *head = NULL;
+  gchar **result, **p;
+
+  if (typed == NULL || *typed == '\0')
+    return NULL;
+
+  for (p = result = g_strsplit(typed, ",", 0); *p; p++) {
+    gchar *token = g_strstrip(*p);
+    if (*token)
+      head = g_slist_prepend(head, g_utf8_strdown(token, -1));
+  }
+  g_strfreev(result);
+  return head;
+}
+
 gchar* 
-tags_dialog (GtkWidget *win, JamAccountLJ *acc, gchar *journal)
+tags_dialog (GtkWidget *win, JamAccountLJ *acc, gchar *journal, gchar *typed)
 {
   GtkWidget *dlg, *sw, *tv;
   GSList *list = NULL;
   gchar *taglist = NULL;
+  GSList *prev;
 
   if (acc == NULL) return NULL;
 
@@ -156,7 +212,8 @@ tags_dialog (GtkWidget *win, JamAccountLJ *acc, gchar *journal)
 				  GTK_POLICY_AUTOMATIC);
   gtk_box_pack_start (GTK_BOX (GTK_DIALOG (dlg)->vbox), sw, TRUE, TRUE, 0);
 
-  tv = taglist_create (list);
+  prev = tags_split(typed);
+  tv = taglist_create (list, &prev);
   gtk_container_add (GTK_CONTAINER (sw), tv);
 
   gtk_window_resize(dlg, 60, 210);
@@ -177,5 +234,14 @@ tags_dialog (GtkWidget *win, JamAccountLJ *acc, gchar *journal)
 
   gtk_widget_destroy (dlg);
   
+  /* free rest of prev list */
+  if (prev) {
+    GSList *p;
+    for (p = prev; p; p = g_slist_next(p)) {
+      g_free(p->data);
+    }
+    g_slist_free(prev);
+  }
+
   return taglist;
 }

@@ -424,7 +424,8 @@ tags_select_cb(JamView *view) {
 
   tags = tags_dialog(toplevel,
 		     JAM_ACCOUNT_LJ(view->account), 
-		     jam_doc_get_usejournal(view->doc));
+		     jam_doc_get_usejournal(view->doc),
+		     (gchar *) gtk_entry_get_text(GTK_ENTRY(view->tags)));
 
   if (tags) {
       gtk_entry_set_text(GTK_ENTRY(view->tags), tags);
