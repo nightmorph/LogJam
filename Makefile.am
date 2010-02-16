@@ -1,4 +1,5 @@
 AUTOMAKE_OPTIONS = dist-bzip2
+ACLOCAL_AMFLAGS = -I m4
 
 if WITH_GTK
 MAYBE_IMAGES = images
