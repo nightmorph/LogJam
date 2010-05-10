@@ -293,7 +293,7 @@ login_check_lastupdate(GtkWindow *parent, JamAccountLJ *acclj) {
 	JamAccount *acc = JAM_ACCOUNT(acclj);
 
 	if (!conf.options.showloginhistory)
-		return TRUE;
+		return login_run(NULL, acclj);
 
 	deltat = time(NULL) - acclj->lastupdate;
 	if (deltat < 2 * 7 * 24 * 60 * 60) /* two weeks. */
